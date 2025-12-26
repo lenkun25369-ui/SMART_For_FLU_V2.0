@@ -34,10 +34,13 @@
      **********************************************************/
     const SHINY_URL = "https://flu-prediction-v2-2-ui-enhance.onrender.com/";
 
+    // ⭐ 固定指定 Observation ID
+    const OBS_ID = "683489";
+
     let accessToken = null;
     let fhirBase = null;
     let pid = null;
-    let OBS_URL = null;   // ⭐ 改成動態決定
+    let OBS_URL = null;
 
     /**********************************************************
      * SMART OAuth Ready
@@ -52,28 +55,21 @@
           throw new Error("No patient context (launch/patient missing)");
         }
 
+        OBS_URL = `${fhirBase}/Observation/${OBS_ID}`;
+
         document.getElementById("info").textContent =
           "✅ SMART OAuth Ready\n\n" +
           "FHIR Server:\n" + fhirBase + "\n\n" +
           "Selected Patient:\nPatient/" + pid + "\n\n" +
-          "Fetching Observation...\n";
+          "Fetching Observation:\n" + OBS_URL + "\n\n";
 
-        // ⭐ 改這行：用 patient context 查 Observation
-        return client.request(`Observation?subject=Patient/${pid}`);
+        // ⭐ 最小修改點：直接抓指定 Observation
+        return client.request(`Observation/${OBS_ID}`);
       })
-      .then(bundle => {
-        if (!bundle.entry || bundle.entry.length === 0) {
-          throw new Error("No Observation found for this patient");
-        }
-
-        // ⭐ 最小策略：取第一筆 Observation
-        const obs = bundle.entry[0].resource;
-        OBS_URL = `${fhirBase}/Observation/${obs.id}`;
-
+      .then(obs => {
         document.getElementById("info").textContent +=
-          "\n📄 Observation Resource Loaded:\n\n" +
-          JSON.stringify(obs, null, 2) +
-          "\n\nDerived Observation URL:\n" + OBS_URL;
+          "📄 Observation Resource Loaded:\n\n" +
+          JSON.stringify(obs, null, 2);
       })
       .catch(err => {
         document.getElementById("info").textContent =
