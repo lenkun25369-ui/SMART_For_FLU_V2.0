@@ -67,6 +67,12 @@
         return client.request(`Observation/${OBS_ID}`);
       })
       .then(obs => {
+          // ⭐ 關鍵：確認 Observation 屬於選定的 Patient
+        if (obs.subject?.reference !== `Patient/${pid}`) {
+          throw new Error(
+            `Observation/${OBS_ID} does not belong to selected Patient/${pid}`
+          );
+        }
         document.getElementById("info").textContent +=
           "📄 Observation Resource Loaded:\n\n" +
           JSON.stringify(obs, null, 2);
