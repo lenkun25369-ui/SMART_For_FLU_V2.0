@@ -34,7 +34,7 @@
      **********************************************************/
     const SHINY_URL = "https://flu-prediction-v2-2-ui-enhance.onrender.com/";
 
-    // ⭐ 固定指定 Observation ID
+    // ⭐ 你指定的 Observation ID
     const OBS_ID = "683489";
 
     let accessToken = null;
@@ -47,6 +47,7 @@
      **********************************************************/
     FHIR.oauth2.ready()
       .then(client => {
+        // ✅ 完全照你給的範例方式讀 patient id
         accessToken = client.state.tokenResponse.access_token;
         fhirBase = client.state.serverUrl;
         pid = client.patient.id;
@@ -55,32 +56,56 @@
           throw new Error("No patient context (launch/patient missing)");
         }
 
-        OBS_URL = `${fhirBase}/Observation/${OBS_ID}`;
-
         document.getElementById("info").textContent =
           "✅ SMART OAuth Ready\n\n" +
           "FHIR Server:\n" + fhirBase + "\n\n" +
           "Selected Patient:\nPatient/" + pid + "\n\n" +
-          "Fetching Observation:\n" + OBS_URL + "\n\n";
+          "Request:\n" +
+          `GET Observation?subject=Patient/${pid}&_id=${OBS_ID}\n\n` +
+          "Response:\n";
 
-        // ⭐ 最小修改點：直接抓指定 Observation
-        return client.request(`Observation/${OBS_ID}`);
+        // ⭐ 精確搜尋：_id = 683489（不直接 GET Observation/683489）
+        return client.request(
+          `Observation?subject=Patient/${pid}&_id=${OBS_ID}`
+        );
       })
-      .then(obs => {
-          // ⭐ 關鍵：確認 Observation 屬於選定的 Patient
-        if (obs.subject?.reference !== `Patient/${pid}`) {
+      .then(bundle => {
+        // ❌ 沒找到
+        if (!bundle.entry || bundle.entry.length === 0) {
           throw new Error(
-            `Observation/${OBS_ID} does not belong to selected Patient/${pid}`
+            `Observation _id=${OBS_ID} not found under Patient/${pid}`
           );
         }
+
+        // ❌ 理論上不該發生，但明確防呆
+        if (bundle.entry.length !== 1) {
+          throw new Error(
+            `Unexpected result: ${bundle.entry.length} Observations returned`
+          );
+        }
+
+        // ✅ 唯一合法情況：剛好 1 筆
+        const obs = bundle.entry[0].resource;
+
+        // 再次嚴格確認（語意安全）
+        if (obs.id !== OBS_ID) {
+          throw new Error("Returned Observation ID does not match requested _id");
+        }
+        if (obs.subject?.reference !== `Patient/${pid}`) {
+          throw new Error("Observation subject does not match selected patient");
+        }
+
+        OBS_URL = `${fhirBase}/Observation/${OBS_ID}`;
+
         document.getElementById("info").textContent +=
-          "📄 Observation Resource Loaded:\n\n" +
-          JSON.stringify(obs, null, 2);
+          JSON.stringify(obs, null, 2) +
+          "\n\n✅ Confirmed Observation:\n" +
+          OBS_URL;
       })
       .catch(err => {
         document.getElementById("info").textContent =
-          "❌ Error:\n" + err;
-        console.error(err);
+          "❌ Error:\n" + err.message;
+        console.error("SMART Error:", err);
       });
 
     /**********************************************************
@@ -98,13 +123,6 @@
         "&pid=" + encodeURIComponent(pid) +
         "&obs=" + encodeURIComponent(OBS_URL) +
         "&fhir=" + encodeURIComponent(fhirBase);
-
-      console.log("Sent to Flu Prediction Model:", {
-        token: accessToken,
-        pid: pid,
-        fhir: fhirBase,
-        obs: OBS_URL
-      });
 
       window.location.href = url;
     };
