@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <title>SMART Observation Viewer</title>
+
+  <!-- SMART JS -->
+  <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.min.js"></script>
+
+  <style>
+    body {
+      font-family: monospace;
+      white-space: pre-wrap;
+      padding: 1rem;
+    }
+    button {
+      margin-top: 1rem;
+      padding: 0.6rem 1.2rem;
+      font-size: 1rem;
+    }
+  </style>
+</head>
+
+<body>
+  
+  <h2>SMART on FHIR – Flu Prediction Demo</h2>
+
+  <div id="info">Initializing...</div>
+
+  <button id="go">Send to Flu Prediction APP</button>
+
+  <script>
+    /**********************************************************
+     * 固定要展示與傳遞的 Observation（Sandbox 中實際存在）
+     **********************************************************/
+    const OBS_URL =
+      "https://thas.mohw.gov.tw/v/r4/fhir/Observation/680277";
+
+    /**********************************************************
+     * 下游 FLU App
+     **********************************************************/
+    const SHINY_URL = "https://flu-prediction-v2-2-ui-enhance.onrender.com/";
+
+    let accessToken = null;
+    let fhirBase = null;
+    let pid = null;
+
+    /**********************************************************
+     * SMART OAuth Ready
+     **********************************************************/
+    FHIR.oauth2.ready()
+      .then(client => {
+        accessToken = client.state.tokenResponse.access_token;
+        fhirBase = client.state.serverUrl;
+
+        document.getElementById("info").textContent =
+          "✅ SMART OAuth Ready\n\n" +
+          "FHIR Server:\n" + fhirBase + "\n\n" +
+          "Fetching Observation:\n" + OBS_URL + "\n";
+
+        // ⭐ 核心：直接讀固定 Observation（不使用 patient context）
+        return client.request(OBS_URL);
+      })
+      .then(obs => {
+        // ⭐ 從 Observation 反推出 patient id
+        pid = obs.subject?.reference?.replace("Patient/", "");
+
+        document.getElementById("info").textContent +=
+          "\n📄 Observation Resource Loaded:\n\n" +
+          JSON.stringify(obs, null, 2) +
+          "\n\nDerived patient id: " + pid;
+      })
+      .catch(err => {
+        document.getElementById("info").textContent =
+          "❌ Error:\n" + err;
+      });
+
+    /**********************************************************
+     * 傳遞給 Shiny（token + pid + obs + fhir）
+     **********************************************************/
+    document.getElementById("go").onclick = () => {
+      const url =
+        SHINY_URL +
+        "?token=" + encodeURIComponent(accessToken) +
+        "&pid=" + encodeURIComponent(pid) +
+        "&obs=" + encodeURIComponent(OBS_URL) +
+        "&fhir=" + encodeURIComponent(fhirBase);
+
+      console.log("Sent to Flu Prediction Model by XGBoost Algorithm:", {
+        token: accessToken,
+        pid: pid,
+        fhir: fhirBase,
+        obs: OBS_URL
+      });
+
+      window.location.href = url;
+    };
+  </script>
+</body>
+</html>
