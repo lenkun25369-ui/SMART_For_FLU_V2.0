@@ -22,7 +22,6 @@
 </head>
 
 <body>
-  
   <h2>SMART on FHIR – Flu Prediction Demo</h2>
 
   <div id="info">Initializing...</div>
@@ -31,12 +30,6 @@
 
   <script>
     /**********************************************************
-     * 固定要展示與傳遞的 Observation（Sandbox 中實際存在）
-     **********************************************************/
-    const OBS_URL =
-      "https://thas.mohw.gov.tw/v/r4/fhir/Observation/680277";
-
-    /**********************************************************
      * 下游 FLU App
      **********************************************************/
     const SHINY_URL = "https://flu-prediction-v2-2-ui-enhance.onrender.com/";
@@ -44,6 +37,7 @@
     let accessToken = null;
     let fhirBase = null;
     let pid = null;
+    let OBS_URL = null;   // ⭐ 改成動態決定
 
     /**********************************************************
      * SMART OAuth Ready
@@ -52,33 +46,50 @@
       .then(client => {
         accessToken = client.state.tokenResponse.access_token;
         fhirBase = client.state.serverUrl;
+        pid = client.patient.id;
+
+        if (!pid) {
+          throw new Error("No patient context (launch/patient missing)");
+        }
 
         document.getElementById("info").textContent =
           "✅ SMART OAuth Ready\n\n" +
           "FHIR Server:\n" + fhirBase + "\n\n" +
-          "Fetching Observation:\n" + OBS_URL + "\n";
+          "Selected Patient:\nPatient/" + pid + "\n\n" +
+          "Fetching Observation...\n";
 
-        // ⭐ 核心：直接讀固定 Observation（不使用 patient context）
-        return client.request(OBS_URL);
+        // ⭐ 改這行：用 patient context 查 Observation
+        return client.request(`Observation?subject=Patient/${pid}`);
       })
-      .then(obs => {
-        // ⭐ 從 Observation 反推出 patient id
-        pid = obs.subject?.reference?.replace("Patient/", "");
+      .then(bundle => {
+        if (!bundle.entry || bundle.entry.length === 0) {
+          throw new Error("No Observation found for this patient");
+        }
+
+        // ⭐ 最小策略：取第一筆 Observation
+        const obs = bundle.entry[0].resource;
+        OBS_URL = `${fhirBase}/Observation/${obs.id}`;
 
         document.getElementById("info").textContent +=
           "\n📄 Observation Resource Loaded:\n\n" +
           JSON.stringify(obs, null, 2) +
-          "\n\nDerived patient id: " + pid;
+          "\n\nDerived Observation URL:\n" + OBS_URL;
       })
       .catch(err => {
         document.getElementById("info").textContent =
           "❌ Error:\n" + err;
+        console.error(err);
       });
 
     /**********************************************************
      * 傳遞給 Shiny（token + pid + obs + fhir）
      **********************************************************/
     document.getElementById("go").onclick = () => {
+      if (!OBS_URL || !pid) {
+        alert("Observation not ready");
+        return;
+      }
+
       const url =
         SHINY_URL +
         "?token=" + encodeURIComponent(accessToken) +
@@ -86,7 +97,7 @@
         "&obs=" + encodeURIComponent(OBS_URL) +
         "&fhir=" + encodeURIComponent(fhirBase);
 
-      console.log("Sent to Flu Prediction Model by XGBoost Algorithm:", {
+      console.log("Sent to Flu Prediction Model:", {
         token: accessToken,
         pid: pid,
         fhir: fhirBase,
